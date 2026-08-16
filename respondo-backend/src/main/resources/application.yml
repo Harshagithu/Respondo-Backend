@@ -1,0 +1,32 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: respondo
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/respondo_db
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+# Custom Respondo settings.
+# jwt.* is unused until Phase 2 (JwtService) but declared now so the
+# property structure is stable and doesn't shift between phases.
+respondo:
+  jwt:
+    secret: ${JWT_SECRET:CHANGE_ME_IN_ENV_this_is_a_dev_only_placeholder_secret_key_value}
+    expiration-ms: 86400000
+  cors:
+    allowed-origins: http://localhost:3000
