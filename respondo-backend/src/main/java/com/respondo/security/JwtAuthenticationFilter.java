@@ -56,7 +56,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
-                if (jwtService.isTokenValid(token, userDetails)) {
+                // isEnabled() reflects User.active at request time, freshly
+                // loaded above — not baked into the token — so admin
+                // deactivating an account (Phase 7) takes effect on this
+                // account's very next request, not just its next login.
+                if (jwtService.isTokenValid(token, userDetails) && userDetails.isEnabled()) {
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

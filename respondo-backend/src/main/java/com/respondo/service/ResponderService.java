@@ -2,6 +2,7 @@ package com.respondo.service;
 
 import com.respondo.dto.responder.AssignmentResponseRequest;
 import com.respondo.dto.responder.ResolveIncidentRequest;
+import com.respondo.dto.responder.ResponderApplicationRequest;
 import com.respondo.dto.responder.ResponderIncidentResponse;
 import com.respondo.dto.responder.StatusUpdateRequest;
 import com.respondo.entity.Assignment;
@@ -11,7 +12,10 @@ import com.respondo.entity.User;
 import com.respondo.enums.AssignmentStatus;
 import com.respondo.enums.IncidentStatus;
 import com.respondo.enums.NotificationType;
+import com.respondo.enums.ResponderApplicationStatus;
 import com.respondo.enums.ResponderAvailability;
+import com.respondo.enums.Role;
+import com.respondo.exception.DuplicateResourceException;
 import com.respondo.exception.ForbiddenException;
 import com.respondo.exception.InvalidStateTransitionException;
 import com.respondo.exception.ResourceNotFoundException;
@@ -47,6 +51,34 @@ public class ResponderService {
     private final IncidentWorkflowService workflowService;
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
+
+    /**
+     * Section 6: "A public user may apply to become a responder." This
+     * was a gap left open in Phase 5 — nothing let a citizen create the
+     * PENDING Responder row that Phase 7's admin approval flow reviews.
+     * Closing it here rather than leaving it as a permanent SQL-only
+     * testing step.
+     */
+    @Transactional
+    public String applyToBecomeResponder(UserPrincipal principal, ResponderApplicationRequest request) {
+        if (principal.getUser().getRole() != Role.CITIZEN) {
+            throw new ForbiddenException("Only citizen accounts can apply to become a responder");
+        }
+        if (responderRepository.findByUserId(principal.getId()).isPresent()) {
+            throw new DuplicateResourceException("You have already applied to become a responder");
+        }
+
+        Responder responder = Responder.builder()
+                .user(principal.getUser())
+                .applicationStatus(ResponderApplicationStatus.PENDING)
+                .availability(ResponderAvailability.OFF_DUTY)
+                .appliedAt(LocalDateTime.now())
+                .skills(request != null ? request.getSkills() : null)
+                .build();
+        responderRepository.save(responder);
+
+        return "Application submitted. An admin will review it.";
+    }
 
     @Transactional(readOnly = true)
     public List<ResponderIncidentResponse> getMyIncidents(UserPrincipal principal) {

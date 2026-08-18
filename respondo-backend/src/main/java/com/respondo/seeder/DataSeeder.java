@@ -1,9 +1,11 @@
 package com.respondo.seeder;
 
 import com.respondo.entity.IncidentCategory;
+import com.respondo.entity.ResponderTeam;
 import com.respondo.entity.User;
 import com.respondo.enums.Role;
 import com.respondo.repository.IncidentCategoryRepository;
+import com.respondo.repository.ResponderTeamRepository;
 import com.respondo.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,10 +16,10 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Seeds startup data (Section 27): the single ADMIN account, and the
- * default incident categories the citizen incident-report form needs
- * (Phase 3). Team seeding joins this class once ResponderTeam has a
- * workflow to seed for (Phase 7).
+ * Seeds startup data (Section 27): the ADMIN account, default incident
+ * categories (Phase 3), and — as of Phase 7 — a couple of optional
+ * initial responder teams so admin has something to assign responders
+ * to without needing to create one by hand first.
  */
 @Component
 @RequiredArgsConstructor
@@ -29,12 +31,14 @@ public class DataSeeder implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final IncidentCategoryRepository categoryRepository;
+    private final ResponderTeamRepository responderTeamRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
     public void run(String... args) {
         seedAdmin();
         seedCategories();
+        seedTeams();
     }
 
     private void seedAdmin() {
@@ -75,11 +79,32 @@ public class DataSeeder implements CommandLineRunner {
         log.info("Seeded {} default incident categories", categories.size());
     }
 
+    private void seedTeams() {
+        if (responderTeamRepository.count() > 0) {
+            return;
+        }
+
+        List<ResponderTeam> teams = List.of(
+                team("Alpha Team", "Primary field response unit"),
+                team("Bravo Team", "Secondary field response unit")
+        );
+
+        responderTeamRepository.saveAll(teams);
+        log.info("Seeded {} default responder teams", teams.size());
+    }
+
     private IncidentCategory category(String name, String description, int severityWeight) {
         return IncidentCategory.builder()
                 .name(name)
                 .description(description)
                 .severityWeight(severityWeight)
+                .build();
+    }
+
+    private ResponderTeam team(String name, String description) {
+        return ResponderTeam.builder()
+                .name(name)
+                .description(description)
                 .build();
     }
 }

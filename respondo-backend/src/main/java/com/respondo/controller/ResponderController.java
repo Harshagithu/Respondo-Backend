@@ -2,17 +2,20 @@ package com.respondo.controller;
 
 import com.respondo.dto.responder.AssignmentResponseRequest;
 import com.respondo.dto.responder.ResolveIncidentRequest;
+import com.respondo.dto.responder.ResponderApplicationRequest;
 import com.respondo.dto.responder.ResponderIncidentResponse;
 import com.respondo.dto.responder.StatusUpdateRequest;
 import com.respondo.security.UserPrincipal;
 import com.respondo.service.ResponderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/responder")
@@ -20,6 +23,20 @@ import java.util.List;
 public class ResponderController {
 
     private final ResponderService responderService;
+
+    /**
+     * Open to any authenticated user (not RESPONDER-only — see the
+     * matcher order in SecurityConfig), since the whole point is that
+     * the caller isn't a responder yet.
+     */
+    @PostMapping("/apply")
+    public ResponseEntity<Map<String, String>> apply(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestBody(required = false) ResponderApplicationRequest request
+    ) {
+        String message = responderService.applyToBecomeResponder(principal, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("message", message));
+    }
 
     @GetMapping("/incidents")
     public ResponseEntity<List<ResponderIncidentResponse>> myIncidents(@AuthenticationPrincipal UserPrincipal principal) {

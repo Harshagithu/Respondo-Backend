@@ -15,4 +15,8 @@ public interface ResponderRepository extends JpaRepository<Responder, Long> {
     List<Responder> findByApplicationStatus(ResponderApplicationStatus status);
 
     List<Responder> findByAvailability(ResponderAvailability availability);
+
+    long countByApplicationStatus(ResponderApplicationStatus status);
+
+    long countByAvailabilityAndApplicationStatus(ResponderAvailability availability, ResponderApplicationStatus applicationStatus);
 }
