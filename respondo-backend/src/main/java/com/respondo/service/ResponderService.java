@@ -10,6 +10,7 @@ import com.respondo.entity.Responder;
 import com.respondo.entity.User;
 import com.respondo.enums.AssignmentStatus;
 import com.respondo.enums.IncidentStatus;
+import com.respondo.enums.NotificationType;
 import com.respondo.enums.ResponderAvailability;
 import com.respondo.exception.ForbiddenException;
 import com.respondo.exception.InvalidStateTransitionException;
@@ -20,7 +21,6 @@ import com.respondo.repository.IncidentRepository;
 import com.respondo.repository.ResponderRepository;
 import com.respondo.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +30,6 @@ import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class ResponderService {
 
     /**
@@ -46,6 +45,8 @@ public class ResponderService {
     private final ResponderRepository responderRepository;
     private final AssignmentRepository assignmentRepository;
     private final IncidentWorkflowService workflowService;
+    private final AuditLogService auditLogService;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public List<ResponderIncidentResponse> getMyIncidents(UserPrincipal principal) {
@@ -94,11 +95,15 @@ public class ResponderService {
         if (Boolean.TRUE.equals(request.getAccepted())) {
             assignment.setStatus(AssignmentStatus.ACCEPTED);
             workflowService.applyTransition(incident, IncidentStatus.RESPONDER_ACCEPTED, responderUser, "Responder accepted assignment");
+            auditLogService.record(responderUser, "RESPONDER_ACCEPTED", "Incident", incident.getId(), assignment.getNotes());
+            notificationService.notify(incident.getCitizen(), NotificationType.STATUS_UPDATE,
+                    "A responder has accepted your incident and is on the way.", incident);
         } else {
             assignment.setStatus(AssignmentStatus.REJECTED);
             responder.setAvailability(ResponderAvailability.AVAILABLE);
             responderRepository.save(responder);
             workflowService.applyTransition(incident, IncidentStatus.PRIORITIZED, responderUser, "Responder rejected assignment — returned to pool");
+            auditLogService.record(responderUser, "RESPONDER_REJECTED", "Incident", incident.getId(), assignment.getNotes());
         }
 
         assignmentRepository.save(assignment);
@@ -112,14 +117,20 @@ public class ResponderService {
         Responder responder = findResponderOrThrow(principal.getId());
         Incident incident = findIncidentOrThrow(incidentId);
         Assignment assignment = findOwnedAssignmentOrThrow(incidentId, AssignmentStatus.ACCEPTED, responder);
+        User responderUser = principal.getUser();
 
         if (!STATUS_UPDATE_TARGETS.contains(request.getStatus())) {
             throw new InvalidStateTransitionException(
                     "This endpoint only accepts EN_ROUTE, ON_SCENE, or IN_PROGRESS — use /resolve to mark an incident RESOLVED");
         }
 
-        workflowService.applyTransition(incident, request.getStatus(), principal.getUser(), request.getRemarks());
+        workflowService.applyTransition(incident, request.getStatus(), responderUser, request.getRemarks());
         Incident saved = incidentRepository.save(incident);
+
+        auditLogService.record(responderUser, "STATUS_UPDATE", "Incident", incident.getId(),
+                "Status changed to " + request.getStatus());
+        notificationService.notify(saved.getCitizen(), NotificationType.STATUS_UPDATE,
+                "Your incident status has been updated to " + request.getStatus() + ".", saved);
 
         return toResponse(assignment, saved);
     }
@@ -153,9 +164,9 @@ public class ResponderService {
         responder.setAvailability(ResponderAvailability.AVAILABLE);
         responderRepository.save(responder);
 
-        // Citizen resolution notification (Section 15) and the audit log
-        // entry (Section 16) both land in Phase 6.
-        log.info("Incident {} resolved by responder user {}", incidentId, responderUser.getId());
+        auditLogService.record(responderUser, "INCIDENT_RESOLVED", "Incident", incident.getId(), request.getResolutionNotes());
+        notificationService.notify(savedIncident.getCitizen(), NotificationType.INCIDENT_RESOLVED,
+                "Your incident has been resolved.", savedIncident);
 
         return toResponse(assignment, savedIncident);
     }

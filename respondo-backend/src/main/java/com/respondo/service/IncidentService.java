@@ -32,6 +32,7 @@ public class IncidentService {
     private final UserRepository userRepository;
     private final IncidentStatusHistoryRepository historyRepository;
     private final IncidentWorkflowService workflowService;
+    private final AuditLogService auditLogService;
 
     @Transactional
     public IncidentResponse createIncident(UserPrincipal principal, IncidentCreateRequest request) {
@@ -56,6 +57,7 @@ public class IncidentService {
         // No "from" status for the very first row — the incident didn't
         // transition into REPORTED, it was created there.
         workflowService.recordHistory(saved, null, IncidentStatus.REPORTED, citizen, "Incident reported by citizen");
+        auditLogService.record(citizen, "INCIDENT_CREATED", "Incident", saved.getId(), "Incident reported: " + saved.getTitle());
 
         return IncidentMapper.toResponse(saved);
     }

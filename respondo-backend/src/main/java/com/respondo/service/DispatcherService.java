@@ -11,6 +11,7 @@ import com.respondo.entity.Responder;
 import com.respondo.entity.User;
 import com.respondo.enums.AssignmentStatus;
 import com.respondo.enums.IncidentStatus;
+import com.respondo.enums.NotificationType;
 import com.respondo.enums.Priority;
 import com.respondo.enums.ResponderApplicationStatus;
 import com.respondo.enums.ResponderAvailability;
@@ -23,7 +24,6 @@ import com.respondo.repository.IncidentRepository;
 import com.respondo.repository.ResponderRepository;
 import com.respondo.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,7 +32,6 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class DispatcherService {
 
     private static final List<IncidentStatus> QUEUE_STATUSES = List.of(
@@ -48,6 +47,8 @@ public class DispatcherService {
     private final AssignmentRepository assignmentRepository;
     private final IncidentWorkflowService workflowService;
     private final PriorityCalculationService priorityCalculationService;
+    private final AuditLogService auditLogService;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public List<IncidentResponse> getQueue() {
@@ -84,13 +85,20 @@ public class DispatcherService {
         incident.setVerifiedAt(LocalDateTime.now());
 
         workflowService.applyTransition(incident, IncidentStatus.VERIFIED, dispatcher, "Incident verified by dispatcher");
+        auditLogService.record(dispatcher, "INCIDENT_VERIFIED", "Incident", incident.getId(), request.getVerificationRemarks());
 
         Priority priority = priorityCalculationService.calculate(incident);
         incident.setPriority(priority);
         workflowService.applyTransition(incident, IncidentStatus.PRIORITIZED, dispatcher,
                 "Auto-calculated priority: " + priority);
+        auditLogService.record(dispatcher, "PRIORITY_CALCULATED", "Incident", incident.getId(),
+                "Auto-calculated priority: " + priority);
 
         Incident saved = incidentRepository.save(incident);
+
+        notificationService.notify(saved.getCitizen(), NotificationType.INCIDENT_VERIFIED,
+                "Your incident has been verified and prioritized as " + priority + ".", saved);
+
         return IncidentMapper.toResponse(saved);
     }
 
@@ -113,11 +121,8 @@ public class DispatcherService {
         incident.setPriority(request.getPriority());
         Incident saved = incidentRepository.save(incident);
 
-        // Section 9/16: manual overrides must be audited. AuditLogService
-        // lands in Phase 6 — this log line keeps the override visible
-        // server-side until that's wired in, rather than silently dropping it.
-        log.info("Priority manually overridden on incident {}: {} -> {} by {} (reason: {})",
-                incidentId, previous, request.getPriority(), principal.getUsername(), request.getReason());
+        auditLogService.record(principal.getUser(), "PRIORITY_OVERRIDDEN", "Incident", incidentId,
+                previous + " -> " + request.getPriority() + " (reason: " + request.getReason() + ")");
 
         return IncidentMapper.toResponse(saved);
     }
@@ -167,7 +172,11 @@ public class DispatcherService {
                 "Assigned to responder #" + responder.getId());
         Incident saved = incidentRepository.save(incident);
 
-        // Notification to the responder arrives in Phase 6.
+        auditLogService.record(dispatcher, "RESPONDER_ASSIGNED", "Incident", incident.getId(),
+                "Assigned to responder #" + responder.getId());
+        notificationService.notify(responder.getUser(), NotificationType.INCIDENT_ASSIGNED,
+                "You have been assigned to incident #" + incident.getId() + ".", saved);
+
         return IncidentMapper.toResponse(saved);
     }
 

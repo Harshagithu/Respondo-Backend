@@ -25,6 +25,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
+    private final AuditLogService auditLogService;
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
@@ -54,6 +55,7 @@ public class AuthService {
                 .build();
     }
 
+    @Transactional
     public AuthResponse login(LoginRequest request) {
         // Delegates to DaoAuthenticationProvider, which uses
         // CustomUserDetailsService + PasswordEncoder under the hood.
@@ -65,6 +67,8 @@ public class AuthService {
 
         UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
         String token = jwtService.generateToken(principal);
+
+        auditLogService.record(principal.getUser(), "LOGIN", "User", principal.getId(), "User logged in");
 
         return AuthResponse.builder()
                 .token(token)

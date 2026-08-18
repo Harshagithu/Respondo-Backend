@@ -67,7 +67,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex, HttpServletRequest req) {
         // Never leak stack traces / internal messages to the client.
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", req, null);
+    	return build(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred", req, null);
     }
 
     private ResponseEntity<ErrorResponse> build(HttpStatus status, String message, HttpServletRequest req, Map<String, String> fieldErrors) {
